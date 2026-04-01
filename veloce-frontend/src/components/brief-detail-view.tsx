@@ -96,6 +96,7 @@ export function BriefDetailView({ briefId }: { briefId: string }) {
     addNote,
     overrideEstimate,
     assignToReviewer,
+    defaultReviewerId,
   } = useVeloce();
 
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -157,8 +158,8 @@ export function BriefDetailView({ briefId }: { briefId: string }) {
           Access restricted
         </p>
         <p className="mt-2 text-sm text-amber-800 dark:text-amber-200">
-          As a reviewer you can only open briefs assigned to you. Switch to Admin
-          in the mock role control to see all briefs.
+          As a reviewer you can only open briefs assigned to you. Sign in as an
+          admin to see all briefs, or ask an admin to assign this brief to you.
         </p>
         <Link
           href="/dashboard/briefs"
@@ -173,19 +174,23 @@ export function BriefDetailView({ briefId }: { briefId: string }) {
   const displayMin = override?.minHours ?? analysis?.effortHoursMin;
   const displayMax = override?.maxHours ?? analysis?.effortHoursMax;
 
-  function submitNote(e: React.FormEvent) {
+  async function submitNote(e: React.FormEvent) {
     e.preventDefault();
     if (!noteBody.trim()) return;
-    addNote({
-      briefId,
-      parentId: replyTo,
-      body: noteBody,
-    });
-    setNoteBody("");
-    setReplyTo(null);
+    try {
+      await addNote({
+        briefId,
+        parentId: replyTo,
+        body: noteBody,
+      });
+      setNoteBody("");
+      setReplyTo(null);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to post note");
+    }
   }
 
-  function submitOverride(e: React.FormEvent) {
+  async function submitOverride(e: React.FormEvent) {
     e.preventDefault();
     setFormErrors({});
     const parsed = overrideSchema.safeParse({
@@ -202,13 +207,19 @@ export function BriefDetailView({ briefId }: { briefId: string }) {
       setFormErrors(err);
       return;
     }
-    overrideEstimate({ briefId, ...parsed.data });
-    setOverrideMin("");
-    setOverrideMax("");
-    setOverrideReason("");
+    try {
+      await overrideEstimate({ briefId, ...parsed.data });
+      setOverrideMin("");
+      setOverrideMax("");
+      setOverrideReason("");
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : "Failed to save override",
+      );
+    }
   }
 
-  const assignedToReviewer = isReviewerAssignedTo(briefId);
+  const hasAssignment = briefAssignments.length > 0;
 
   return (
     <div className="space-y-8">
@@ -222,11 +233,21 @@ export function BriefDetailView({ briefId }: { briefId: string }) {
         {role === "admin" ? (
           <button
             type="button"
-            onClick={() => assignToReviewer(briefId)}
-            disabled={assignedToReviewer}
+            onClick={() =>
+              void assignToReviewer(briefId).catch((err) =>
+                window.alert(
+                  err instanceof Error ? err.message : "Assign failed",
+                ),
+              )
+            }
+            disabled={hasAssignment || !defaultReviewerId}
             className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
-            {assignedToReviewer ? "Already assigned to reviewer" : "Assign to reviewer"}
+            {!defaultReviewerId
+              ? "No reviewer user (run API seed)"
+              : hasAssignment
+                ? "Already has assignment"
+                : "Assign to reviewer"}
           </button>
         ) : null}
       </div>

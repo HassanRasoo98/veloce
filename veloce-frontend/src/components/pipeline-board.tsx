@@ -107,7 +107,12 @@ export function PipelineBoard() {
     const briefId = String(active.id);
     const overId = String(over.id) as PipelineStage;
     if (!stages.includes(overId)) return;
-    moveBriefToStage(briefId, overId);
+    void moveBriefToStage(briefId, overId).catch((err) => {
+      console.error(err);
+      window.alert(
+        err instanceof Error ? err.message : "Could not update stage. Try again.",
+      );
+    });
   }
 
   const byStage = (stage: PipelineStage) =>
@@ -121,8 +126,8 @@ export function PipelineBoard() {
         ))}
       </div>
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        Drag cards between columns. Updates apply immediately (mock optimistic
-        UI); each move appends a stage event in the brief timeline.
+        Drag cards between columns. Each move is saved to the API and logged on
+        the brief timeline.
       </p>
     </DndContext>
   );

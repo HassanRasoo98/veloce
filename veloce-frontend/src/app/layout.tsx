@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Providers } from "@/components/providers";
 import { SiteHeader } from "@/components/site-header";
-import { VeloceProvider } from "@/lib/veloce-store";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Veloce — Project intake (mock)",
+  title: "Veloce — Project intake",
   description:
-    "CodeAcme assessment UI mock: AI-powered project intake and internal pipeline.",
+    "CodeAcme-style Veloce: intake, AI analysis, and internal pipeline (FastAPI + MongoDB).",
 };
 
 export default function RootLayout({
@@ -31,10 +31,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-zinc-50 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
-        <VeloceProvider>
+        <Providers>
           <SiteHeader />
           <main className="flex flex-1 flex-col">{children}</main>
-        </VeloceProvider>
+        </Providers>
       </body>
     </html>
   );

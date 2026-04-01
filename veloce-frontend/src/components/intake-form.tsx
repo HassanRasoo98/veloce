@@ -26,10 +26,13 @@ export function IntakeForm() {
   const { addIntakeBrief } = useVeloce();
   const [values, setValues] = useState<IntakeFormValues>(defaultValues);
   const [errors, setErrors] = useState<Partial<Record<keyof IntakeFormValues, string>>>({});
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrors({});
+    setApiError(null);
     const parsed = intakeFormSchema.safeParse(values);
     if (!parsed.success) {
       const fieldErrors: Partial<Record<keyof IntakeFormValues, string>> = {};
@@ -40,9 +43,16 @@ export function IntakeForm() {
       setErrors(fieldErrors);
       return;
     }
-    addIntakeBrief(parsed.data);
-    setValues(defaultValues);
-    router.push("/dashboard/pipeline?welcome=1");
+    setSubmitting(true);
+    try {
+      await addIntakeBrief(parsed.data);
+      setValues(defaultValues);
+      router.push("/dashboard/pipeline?welcome=1");
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -216,11 +226,17 @@ export function IntakeForm() {
         </div>
       </fieldset>
 
+      {apiError ? (
+        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+          {apiError}
+        </p>
+      ) : null}
       <button
         type="submit"
-        className="w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-950"
+        disabled={submitting}
+        className="w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:opacity-50 dark:focus:ring-offset-zinc-950"
       >
-        Submit brief
+        {submitting ? "Submitting…" : "Submit brief"}
       </button>
     </form>
   );

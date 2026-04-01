@@ -100,18 +100,6 @@ export interface EstimateOverride {
   byName: string;
 }
 
-export const MOCK_USER_ADMIN = {
-  id: "user-admin",
-  name: "Admin User",
-  email: "admin@veloce.mock",
-};
-
-export const MOCK_USER_REVIEWER = {
-  id: "user-reviewer",
-  name: "Reviewer User",
-  email: "reviewer@veloce.mock",
-};
-
 export const intakeFormSchema = z.object({
   title: z.string().trim().min(3, "Title must be at least 3 characters"),
   descriptionRich: z

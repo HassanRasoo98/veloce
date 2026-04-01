@@ -1,34 +1,26 @@
-# Veloce — mock frontend
+# Veloce frontend (Next.js)
 
-UI-only implementation of the [CodeAcme Full-Stack AI Engineer assessment](https://assessment.codeacme.com/) product **Veloce** (project intake, AI-style analysis, internal pipeline). **There is no backend:** all briefs, analyses, notes, and stage events live in a React context seeded from [`src/lib/mock-data/`](src/lib/mock-data/index.ts).
+Next.js App Router UI for **Veloce**: public intake, dashboard pipeline (Kanban), brief detail, and analytics. Data comes from the **FastAPI** backend ([../veloce-backend/README.md](../veloce-backend/README.md)), not from in-memory mocks.
 
-## Run locally
+## Environment
+
+Copy [.env.local.example](.env.local.example) to `.env.local`:
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:4000
+```
+
+## Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). Use **Dashboard** after signing in (seed users from the backend README; defaults `admin@veloce.local` / `admin123` and `reviewer@veloce.local` / `reviewer123` if you used the seed script defaults).
 
-## Mock roles
+Public **Submit brief** works without login; the API stores the brief and runs OpenAI analysis.
 
-Use **Mock role** on the dashboard to switch:
+## Assessment
 
-- **Admin** — sees every brief, can move cards on the Kanban, assign briefs to the reviewer, and open any detail view.
-- **Reviewer** — only sees briefs that are assigned to the mock reviewer user (seed data plus any assignments you add as Admin).
-
-This replaces real email/password auth for the purpose of the static demo.
-
-## Routes
-
-| Path | Purpose |
-|------|---------|
-| `/` | Landing |
-| `/intake` | Public-style intake form (validates with Zod; new briefs get a mock AI analysis) |
-| `/dashboard/pipeline` | Kanban (drag-and-drop) |
-| `/dashboard/briefs` | Table of briefs |
-| `/dashboard/briefs/[id]` | Detail: submission + analysis, notes, timeline, estimate override |
-| `/dashboard/analytics` | Recharts KPIs and charts |
-
-Parent repo context: see [`../readme.md`](../readme.md).
+Product scope aligns with the [CodeAcme assessment](https://assessment.codeacme.com/). Parent repo: [../readme.md](../readme.md).

@@ -1,0 +1,28 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Frontend",
+            "type": "shell",
+            "command": "cd veloce-frontend && npm run dev",
+            "group": "build",
+            "problemMatcher": []
+        },              
+        {
+            "label": "Run Backend",
+            "type": "shell",
+            "command": "cd veloce-backend && source .venv/bin/activate && uvicorn main:app --reload --port 4000",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Full Stack",
+            "dependsOn": ["Run Backend", "Run Frontend"],
+            "dependsOrder": "parallel",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

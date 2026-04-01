@@ -4,18 +4,23 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useReducer,
+  useState,
   type ReactNode,
 } from "react";
 import {
-  buildAnalysisMap,
-  seedAnalyses,
-  seedAssignments,
-  seedBriefs,
-  seedNotes,
-  seedStageEvents,
-} from "@/lib/mock-data";
+  createBriefPublic,
+  getBriefDetail,
+  listBriefsPage,
+  listUsers,
+  patchBriefStage,
+  postAssign,
+  postEstimateOverride,
+  postNote,
+} from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type {
   AiAnalysis,
   Assignment,
@@ -27,12 +32,7 @@ import type {
   Role,
   StageEvent,
 } from "@/types/veloce";
-import {
-  MOCK_USER_ADMIN,
-  MOCK_USER_REVIEWER,
-  PIPELINE_STAGES,
-  type ProjectCategory,
-} from "@/types/veloce";
+import { PIPELINE_STAGES } from "@/types/veloce";
 
 type State = {
   briefs: Brief[];
@@ -41,142 +41,41 @@ type State = {
   notes: Note[];
   assignments: Assignment[];
   estimateOverrides: Map<string, EstimateOverride>;
-  role: Role;
+};
+
+const emptyState: State = {
+  briefs: [],
+  analyses: new Map(),
+  stageEvents: [],
+  notes: [],
+  assignments: [],
+  estimateOverrides: new Map(),
 };
 
 type Action =
-  | { type: "SET_ROLE"; role: Role }
+  | { type: "RESET" }
   | {
-      type: "ADD_BRIEF";
-      brief: Brief;
-      analysis: AiAnalysis;
-    }
-  | {
-      type: "MOVE_STAGE";
-      briefId: string;
-      toStage: PipelineStage;
-      actorName: string;
-    }
-  | {
-      type: "ADD_NOTE";
-      note: Note;
-    }
-  | {
-      type: "OVERRIDE_ESTIMATE";
-      override: EstimateOverride;
-    }
-  | { type: "ADD_ASSIGNMENT"; assignment: Assignment };
-
-let idCounter = 0;
-function nextId(prefix: string) {
-  idCounter += 1;
-  return `${prefix}-${Date.now()}-${idCounter}`;
-}
-
-function mockAnalyze(briefId: string, values: IntakeFormValues): AiAnalysis {
-  const text = `${values.title} ${values.descriptionRich}`.toLowerCase();
-  let category: ProjectCategory = "Web App";
-  if (/(mobile|ios|android|react native)/.test(text)) category = "Mobile";
-  else if (/(ai|ml|rag|embedding|llm|gpt|model)/.test(text)) category = "AI/ML";
-  else if (/(zapier|sync|salesforce|integration|api|webhook)/.test(text))
-    category = "Integration";
-  else if (/(automat|ocr|pipeline|cron|workflow|etl)/.test(text))
-    category = "Automation";
-
-  const complexity = (
-    values.budgetTier === "100k_plus" || values.timelineUrgency === "critical"
-      ? 5
-      : values.budgetTier === "under_10k"
-        ? 2
-        : 3
-  ) as 1 | 2 | 3 | 4 | 5;
-
-  const base = 60 + values.descriptionRich.length / 4;
-
-  return {
-    briefId,
-    features: [
-      "Discovery workshop and roadmap",
-      "Core user flows and data model",
-      "Production deployment and handoff",
-    ],
-    category,
-    effortHoursMin: Math.round(base * 0.8),
-    effortHoursMax: Math.round(base * 1.6),
-    techStack: ["Next.js", "PostgreSQL", "Tailwind CSS"],
-    complexity,
-  };
-}
-
-const initialState: State = {
-  briefs: seedBriefs,
-  analyses: buildAnalysisMap(seedAnalyses),
-  stageEvents: seedStageEvents,
-  notes: seedNotes,
-  assignments: seedAssignments,
-  estimateOverrides: new Map(),
-  role: "admin",
-};
+      type: "HYDRATE";
+      briefs: Brief[];
+      analyses: Map<string, AiAnalysis>;
+      stageEvents: StageEvent[];
+      notes: Note[];
+      assignments: Assignment[];
+      estimateOverrides: Map<string, EstimateOverride>;
+    };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "SET_ROLE":
-      return { ...state, role: action.role };
-    case "ADD_BRIEF":
+    case "RESET":
+      return { ...emptyState };
+    case "HYDRATE":
       return {
-        ...state,
-        briefs: [action.brief, ...state.briefs],
-        analyses: new Map(state.analyses).set(
-          action.analysis.briefId,
-          action.analysis,
-        ),
-        stageEvents: [
-          {
-            id: nextId("ev"),
-            briefId: action.brief.id,
-            fromStage: null,
-            toStage: "new",
-            at: action.brief.submittedAt,
-            actorName: "Public intake",
-          },
-          ...state.stageEvents,
-        ],
-      };
-    case "MOVE_STAGE": {
-      const { briefId, toStage, actorName } = action;
-      const brief = state.briefs.find((b) => b.id === briefId);
-      if (!brief || brief.stage === toStage) return state;
-      const fromStage = brief.stage;
-      const event: StageEvent = {
-        id: nextId("ev"),
-        briefId,
-        fromStage,
-        toStage,
-        at: new Date().toISOString(),
-        actorName,
-      };
-      return {
-        ...state,
-        briefs: state.briefs.map((b) =>
-          b.id === briefId ? { ...b, stage: toStage } : b,
-        ),
-        stageEvents: [event, ...state.stageEvents],
-      };
-    }
-    case "ADD_NOTE":
-      return { ...state, notes: [action.note, ...state.notes] };
-    case "OVERRIDE_ESTIMATE":
-      return {
-        ...state,
-        estimateOverrides: new Map(state.estimateOverrides).set(
-          action.override.briefId,
-          action.override,
-        ),
-      };
-    case "ADD_ASSIGNMENT":
-      return {
-        ...state,
-        assignments: [action.assignment, ...state.assignments],
+        briefs: action.briefs,
+        analyses: action.analyses,
+        stageEvents: action.stageEvents,
+        notes: action.notes,
+        assignments: action.assignments,
+        estimateOverrides: action.estimateOverrides,
       };
     default:
       return state;
@@ -192,21 +91,24 @@ type VeloceContextValue = {
   estimateOverrides: Map<string, EstimateOverride>;
   role: Role;
   currentUserName: string;
-  setRole: (role: Role) => void;
-  addIntakeBrief: (values: IntakeFormValues) => void;
-  moveBriefToStage: (briefId: string, toStage: PipelineStage) => void;
+  userId: string;
+  syncing: boolean;
+  defaultReviewerId: string | null;
+  refreshWorkspace: () => Promise<void>;
+  addIntakeBrief: (values: IntakeFormValues) => Promise<void>;
+  moveBriefToStage: (briefId: string, toStage: PipelineStage) => Promise<void>;
   addNote: (input: {
     briefId: string;
     parentId: string | null;
     body: string;
-  }) => void;
+  }) => Promise<void>;
   overrideEstimate: (input: {
     briefId: string;
     minHours: number;
     maxHours: number;
     reason: string;
-  }) => void;
-  assignToReviewer: (briefId: string) => void;
+  }) => Promise<void>;
+  assignToReviewer: (briefId: string) => Promise<void>;
   isReviewerAssignedTo: (briefId: string) => boolean;
   visibleBriefs: Brief[];
   PIPELINE_STAGES: typeof PIPELINE_STAGES;
@@ -214,126 +116,207 @@ type VeloceContextValue = {
 
 const VeloceContext = createContext<VeloceContextValue | null>(null);
 
-export function VeloceProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+const guestValue: VeloceContextValue = {
+  briefs: [],
+  analyses: new Map(),
+  stageEvents: [],
+  notes: [],
+  assignments: [],
+  estimateOverrides: new Map(),
+  role: "admin",
+  currentUserName: "",
+  userId: "",
+  syncing: false,
+  defaultReviewerId: null,
+  refreshWorkspace: async () => {},
+  addIntakeBrief: async () => {},
+  moveBriefToStage: async () => {},
+  addNote: async () => {},
+  overrideEstimate: async () => {},
+  assignToReviewer: async () => {},
+  isReviewerAssignedTo: () => false,
+  visibleBriefs: [],
+  PIPELINE_STAGES,
+};
 
-  const currentUserName =
-    state.role === "admin"
-      ? MOCK_USER_ADMIN.name
-      : MOCK_USER_REVIEWER.name;
+export function VeloceProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
+  const [state, dispatch] = useReducer(reducer, emptyState);
+  const [syncing, setSyncing] = useState(false);
+  const [defaultReviewerId, setDefaultReviewerId] = useState<string | null>(
+    null,
+  );
+
+  const refreshWorkspace = useCallback(async () => {
+    if (!user) {
+      dispatch({ type: "RESET" });
+      return;
+    }
+    setSyncing(true);
+    try {
+      const items: Brief[] = [];
+      let cursor: string | null = null;
+      do {
+        const page = await listBriefsPage(cursor ?? undefined, 100);
+        items.push(...page.items);
+        cursor = page.nextCursor;
+      } while (cursor);
+
+      const analyses = new Map<string, AiAnalysis>();
+      const evById = new Map<string, StageEvent>();
+      const noteById = new Map<string, Note>();
+      const assignById = new Map<string, Assignment>();
+      const estimateOverrides = new Map<string, EstimateOverride>();
+
+      await Promise.all(
+        items.map(async (b) => {
+          const d = await getBriefDetail(b.id);
+          if (d.analysis) analyses.set(b.id, d.analysis);
+          for (const e of d.stageEvents) evById.set(e.id, e);
+          for (const n of d.notes) noteById.set(n.id, n);
+          for (const a of d.assignments) assignById.set(a.id, a);
+          if (d.estimateOverride)
+            estimateOverrides.set(b.id, d.estimateOverride);
+        }),
+      );
+
+      const stageEvents = [...evById.values()].sort(
+        (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
+      );
+      const notes = [...noteById.values()].sort(
+        (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
+      );
+      const assignments = [...assignById.values()].sort(
+        (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
+      );
+
+      dispatch({
+        type: "HYDRATE",
+        briefs: items,
+        analyses,
+        stageEvents,
+        notes,
+        assignments,
+        estimateOverrides,
+      });
+    } finally {
+      setSyncing(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    void refreshWorkspace();
+  }, [authLoading, refreshWorkspace]);
+
+  useEffect(() => {
+    if (user?.role === "admin") {
+      void listUsers("reviewer")
+        .then((u) => setDefaultReviewerId(u[0]?.id ?? null))
+        .catch(() => setDefaultReviewerId(null));
+    } else {
+      setDefaultReviewerId(null);
+    }
+  }, [user]);
 
   const isReviewerAssignedTo = useCallback(
-    (briefId: string) =>
-      state.assignments.some(
-        (a) =>
-          a.briefId === briefId && a.assignedToId === MOCK_USER_REVIEWER.id,
-      ),
-    [state.assignments],
+    (briefId: string) => {
+      if (!user) return false;
+      if (user.role === "admin") return true;
+      return state.assignments.some(
+        (a) => a.briefId === briefId && a.assignedToId === user.id,
+      );
+    },
+    [state.assignments, user],
   );
 
   const visibleBriefs = useMemo(() => {
-    if (state.role === "admin") return state.briefs;
+    if (!user || user.role === "admin") return state.briefs;
     return state.briefs.filter((b) => isReviewerAssignedTo(b.id));
-  }, [state.briefs, state.role, isReviewerAssignedTo]);
+  }, [state.briefs, user, isReviewerAssignedTo]);
 
-  const setRole = useCallback((role: Role) => {
-    dispatch({ type: "SET_ROLE", role });
-  }, []);
-
-  const addIntakeBrief = useCallback((values: IntakeFormValues) => {
-    const id = nextId("brf");
-    const submittedAt = new Date().toISOString();
-    const brief: Brief = {
-      id,
-      title: values.title,
-      descriptionRich: values.descriptionRich,
-      budgetTier: values.budgetTier,
-      timelineUrgency: values.timelineUrgency,
-      contactName: values.contactName,
-      contactEmail: values.contactEmail,
-      contactPhone: values.contactPhone?.trim() || undefined,
-      stage: "new",
-      submittedAt,
-    };
-    const analysis = mockAnalyze(id, values);
-    dispatch({ type: "ADD_BRIEF", brief, analysis });
-  }, []);
+  const addIntakeBrief = useCallback(
+    async (values: IntakeFormValues) => {
+      await createBriefPublic(values);
+      if (user) await refreshWorkspace();
+    },
+    [user, refreshWorkspace],
+  );
 
   const moveBriefToStage = useCallback(
-    (briefId: string, toStage: PipelineStage) => {
-      dispatch({
-        type: "MOVE_STAGE",
-        briefId,
-        toStage,
-        actorName: currentUserName,
-      });
+    async (briefId: string, toStage: PipelineStage) => {
+      await patchBriefStage(briefId, toStage);
+      await refreshWorkspace();
     },
-    [currentUserName],
+    [refreshWorkspace],
   );
 
   const addNote = useCallback(
-    (input: { briefId: string; parentId: string | null; body: string }) => {
-      const note: Note = {
-        id: nextId("note"),
-        briefId: input.briefId,
+    async (input: {
+      briefId: string;
+      parentId: string | null;
+      body: string;
+    }) => {
+      await postNote(input.briefId, {
+        body: input.body,
         parentId: input.parentId,
-        authorName: currentUserName,
-        body: input.body.trim(),
-        at: new Date().toISOString(),
-      };
-      dispatch({ type: "ADD_NOTE", note });
+      });
+      await refreshWorkspace();
     },
-    [currentUserName],
+    [refreshWorkspace],
   );
 
   const overrideEstimate = useCallback(
-    (input: {
+    async (input: {
       briefId: string;
       minHours: number;
       maxHours: number;
       reason: string;
     }) => {
-      dispatch({
-        type: "OVERRIDE_ESTIMATE",
-        override: {
-          briefId: input.briefId,
-          minHours: input.minHours,
-          maxHours: input.maxHours,
-          reason: input.reason.trim(),
-          at: new Date().toISOString(),
-          byName: currentUserName,
-        },
+      await postEstimateOverride(input.briefId, {
+        minHours: input.minHours,
+        maxHours: input.maxHours,
+        reason: input.reason,
       });
+      await refreshWorkspace();
     },
-    [currentUserName],
+    [refreshWorkspace],
   );
 
   const assignToReviewer = useCallback(
-    (briefId: string) => {
-      const assignment: Assignment = {
-        id: nextId("asg"),
-        briefId,
-        assignedToId: MOCK_USER_REVIEWER.id,
-        assignedToName: MOCK_USER_REVIEWER.name,
-        assignedByName: MOCK_USER_ADMIN.name,
-        at: new Date().toISOString(),
-      };
-      dispatch({ type: "ADD_ASSIGNMENT", assignment });
+    async (briefId: string) => {
+      if (!defaultReviewerId) {
+        throw new Error(
+          "No reviewer available. Run seed script and ensure a reviewer user exists.",
+        );
+      }
+      await postAssign(briefId, defaultReviewerId);
+      await refreshWorkspace();
     },
-    [],
+    [defaultReviewerId, refreshWorkspace],
   );
 
-  const value = useMemo<VeloceContextValue>(
-    () => ({
+  const value = useMemo<VeloceContextValue>(() => {
+    if (!user) {
+      return {
+        ...guestValue,
+        addIntakeBrief,
+        refreshWorkspace,
+      };
+    }
+    return {
       briefs: state.briefs,
       analyses: state.analyses,
       stageEvents: state.stageEvents,
       notes: state.notes,
       assignments: state.assignments,
       estimateOverrides: state.estimateOverrides,
-      role: state.role,
-      currentUserName,
-      setRole,
+      role: user.role,
+      currentUserName: user.name,
+      userId: user.id,
+      syncing,
+      defaultReviewerId,
+      refreshWorkspace,
       addIntakeBrief,
       moveBriefToStage,
       addNote,
@@ -342,26 +325,21 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
       isReviewerAssignedTo,
       visibleBriefs,
       PIPELINE_STAGES,
-    }),
-    [
-      state.briefs,
-      state.analyses,
-      state.stageEvents,
-      state.notes,
-      state.assignments,
-      state.estimateOverrides,
-      state.role,
-      currentUserName,
-      setRole,
-      addIntakeBrief,
-      moveBriefToStage,
-      addNote,
-      overrideEstimate,
-      assignToReviewer,
-      isReviewerAssignedTo,
-      visibleBriefs,
-    ],
-  );
+    };
+  }, [
+    user,
+    state,
+    syncing,
+    defaultReviewerId,
+    refreshWorkspace,
+    addIntakeBrief,
+    moveBriefToStage,
+    addNote,
+    overrideEstimate,
+    assignToReviewer,
+    isReviewerAssignedTo,
+    visibleBriefs,
+  ]);
 
   return (
     <VeloceContext.Provider value={value}>{children}</VeloceContext.Provider>
