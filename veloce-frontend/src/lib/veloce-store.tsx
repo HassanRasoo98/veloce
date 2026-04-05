@@ -64,7 +64,9 @@ type Action =
       notes: Note[];
       assignments: Assignment[];
       estimateOverrides: Map<string, EstimateOverride>;
-    };
+    }
+  | { type: "SET_BRIEF_STAGE"; briefId: string; stage: PipelineStage }
+  | { type: "MERGE_BRIEF"; brief: Brief };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -78,6 +80,20 @@ function reducer(state: State, action: Action): State {
         notes: action.notes,
         assignments: action.assignments,
         estimateOverrides: action.estimateOverrides,
+      };
+    case "SET_BRIEF_STAGE":
+      return {
+        ...state,
+        briefs: state.briefs.map((b) =>
+          b.id === action.briefId ? { ...b, stage: action.stage } : b,
+        ),
+      };
+    case "MERGE_BRIEF":
+      return {
+        ...state,
+        briefs: state.briefs.map((b) =>
+          b.id === action.brief.id ? action.brief : b,
+        ),
       };
     default:
       return state;
@@ -316,10 +332,29 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
 
   const moveBriefToStage = useCallback(
     async (briefId: string, toStage: PipelineStage) => {
-      await patchBriefStage(briefId, toStage);
-      await refreshWorkspace();
+      const prev = state.briefs.find((b) => b.id === briefId);
+      if (!prev) {
+        await patchBriefStage(briefId, toStage);
+        await refreshWorkspace();
+        return;
+      }
+      if (prev.stage === toStage) return;
+
+      const previousStage = prev.stage;
+      dispatch({ type: "SET_BRIEF_STAGE", briefId, stage: toStage });
+      try {
+        const { brief } = await patchBriefStage(briefId, toStage);
+        dispatch({ type: "MERGE_BRIEF", brief });
+      } catch (err) {
+        dispatch({
+          type: "SET_BRIEF_STAGE",
+          briefId,
+          stage: previousStage,
+        });
+        throw err;
+      }
     },
-    [refreshWorkspace],
+    [state.briefs, refreshWorkspace],
   );
 
   const addNote = useCallback(
