@@ -10,11 +10,21 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import Link from "next/link";
+import { useRef, type MutableRefObject } from "react";
 import { useVeloce } from "@/lib/veloce-store";
 import type { Brief, PipelineStage } from "@/types/veloce";
 import { budgetTierLabel, stageLabel } from "@/types/veloce";
 
-function BriefCard({ brief }: { brief: Brief }) {
+/** Browsers fire a click after pointer-up from a drag; `isDragging` is already false. */
+const POST_DRAG_CLICK_SUPPRESS_MS = 500;
+
+function BriefCard({
+  brief,
+  blockLinkNavigationUntilRef,
+}: {
+  brief: Brief;
+  blockLinkNavigationUntilRef: MutableRefObject<number>;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: brief.id });
 
@@ -32,8 +42,11 @@ function BriefCard({ brief }: { brief: Brief }) {
         className={`block rounded-lg border border-zinc-200 bg-white p-3 shadow-sm transition hover:border-emerald-300 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-emerald-700 ${
           isDragging ? "opacity-60 ring-2 ring-emerald-500" : ""
         }`}
-        onClick={(e) => {
-          if (isDragging) e.preventDefault();
+        onClickCapture={(e) => {
+          if (Date.now() < blockLinkNavigationUntilRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
         }}
       >
         <div
@@ -64,9 +77,11 @@ function BriefCard({ brief }: { brief: Brief }) {
 function StageColumn({
   stage,
   briefs,
+  blockLinkNavigationUntilRef,
 }: {
   stage: PipelineStage;
   briefs: Brief[];
+  blockLinkNavigationUntilRef: MutableRefObject<number>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
 
@@ -86,7 +101,11 @@ function StageColumn({
         data-stage={stage}
       >
         {briefs.map((b) => (
-          <BriefCard key={b.id} brief={b} />
+          <BriefCard
+            key={b.id}
+            brief={b}
+            blockLinkNavigationUntilRef={blockLinkNavigationUntilRef}
+          />
         ))}
       </div>
     </div>
@@ -97,9 +116,15 @@ export function PipelineBoard() {
   const { visibleBriefs, moveBriefToStage, PIPELINE_STAGES: stages } =
     useVeloce();
 
+  const blockLinkNavigationUntilRef = useRef(0);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
+
+  function markDragEnded() {
+    blockLinkNavigationUntilRef.current = Date.now() + POST_DRAG_CLICK_SUPPRESS_MS;
+  }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -119,10 +144,22 @@ export function PipelineBoard() {
     visibleBriefs.filter((b) => b.stage === stage);
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      onDragEnd={(e) => {
+        markDragEnded();
+        handleDragEnd(e);
+      }}
+      onDragCancel={markDragEnded}
+    >
       <div className="flex gap-3 overflow-x-auto pb-4">
         {stages.map((stage) => (
-          <StageColumn key={stage} stage={stage} briefs={byStage(stage)} />
+          <StageColumn
+            key={stage}
+            stage={stage}
+            briefs={byStage(stage)}
+            blockLinkNavigationUntilRef={blockLinkNavigationUntilRef}
+          />
         ))}
       </div>
       <p className="text-xs text-zinc-500 dark:text-zinc-400">

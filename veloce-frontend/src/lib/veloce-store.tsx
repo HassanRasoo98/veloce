@@ -13,6 +13,7 @@ import {
 import {
   createBriefPublic,
   getBriefDetail,
+  getStoredToken,
   listBriefsPage,
   listUsers,
   patchBriefStage,
@@ -20,6 +21,7 @@ import {
   postEstimateOverride,
   postNote,
 } from "@/lib/api";
+import { consumeWorkspaceSse } from "@/lib/workspace-sse";
 import { useAuth } from "@/lib/auth-context";
 import type {
   AiAnalysis,
@@ -208,6 +210,75 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
     if (authLoading) return;
     void refreshWorkspace();
   }, [authLoading, refreshWorkspace]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+
+    let alive = true;
+    let streamAbort: AbortController | null = null;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleRefresh = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        if (!alive) return;
+        if (document.visibilityState !== "visible") return;
+        void refreshWorkspace();
+      }, 250);
+    };
+
+    const runLoop = async () => {
+      let backoffMs = 1000;
+      while (alive) {
+        const token = getStoredToken();
+        if (!token) break;
+
+        streamAbort = new AbortController();
+        try {
+          await consumeWorkspaceSse(
+            "/api/workspace/events",
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: streamAbort.signal,
+            },
+            (msg) => {
+              if (msg.type === "workspace_changed") scheduleRefresh();
+            },
+          );
+          backoffMs = 1000;
+        } catch {
+          if (!alive || streamAbort.signal.aborted) break;
+        }
+
+        if (!alive) break;
+
+        await new Promise<void>((resolve) => {
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            resolve();
+          }, backoffMs);
+          backoffMs = Math.min(30_000, backoffMs * 2);
+        });
+      }
+    };
+
+    void runLoop();
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshWorkspace();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      alive = false;
+      streamAbort?.abort();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [authLoading, user?.id, refreshWorkspace]);
 
   useEffect(() => {
     if (user?.role === "admin") {
