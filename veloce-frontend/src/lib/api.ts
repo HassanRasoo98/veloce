@@ -9,10 +9,11 @@ import type {
   StageEvent,
 } from "@/types/veloce";
 
+/** Empty base = same-origin (Vercel / `next dev`). Set NEXT_PUBLIC_API_URL only to call a separate API (e.g. legacy split dev). */
 const BASE =
   typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
     ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")
-    : "http://localhost:4000";
+    : "";
 
 const TOKEN_KEY = "veloce_token";
 
