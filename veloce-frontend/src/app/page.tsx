@@ -4,7 +4,7 @@ export default function HomePage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-1 flex-col justify-center px-4 py-16">
       <p className="text-sm font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-        Veloce · Mock frontend
+        Veloce · Mock veloce-frontend
       </p>
       <h1 className="mt-3 text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
         AI-powered project intake and estimation

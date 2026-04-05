@@ -1,0 +1,9 @@
+{
+  "title": "Webhook test brief",
+  "descriptionRich": "Fixture body for scripts/test-webhook-intake.ts — must stay at least twenty characters.",
+  "budgetTier": "10k_25k",
+  "timelineUrgency": "standard",
+  "contactName": "Fixture User",
+  "contactEmail": "fixture@example.com",
+  "contactPhone": null
+}

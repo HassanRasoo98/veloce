@@ -38,22 +38,20 @@ export async function GET(request: Request) {
         );
       };
 
-      const cleanup = () => {
-        void changeStream?.close().catch(() => {});
-        changeStream = undefined;
+      const safeSend = (payload: unknown) => {
+        try {
+          send(payload);
+        } catch {
+          /* controller closed / client disconnected */
+        }
       };
 
       const onAbort = () => {
-        cleanup();
-        try {
-          controller.close();
-        } catch {
-          /* already closed */
-        }
+        void changeStream?.close().catch(() => {});
       };
       request.signal.addEventListener("abort", onAbort);
 
-      send({ type: "ready" });
+      safeSend({ type: "ready" });
 
       try {
         changeStream = db.watch(
@@ -67,25 +65,58 @@ export async function GET(request: Request) {
           ],
           { fullDocument: "updateLookup" },
         );
-
-        for await (const _ of changeStream) {
-          if (request.signal.aborted) break;
-          send({ type: "workspace_changed" });
-        }
       } catch (err) {
-        console.error("[workspace/events] change stream error", err);
-        send({
+        console.error("[workspace/events] failed to open change stream", err);
+        safeSend({
           type: "error",
-          message: err instanceof Error ? err.message : String(err),
+          message:
+            err instanceof Error
+              ? err.message
+              : "Change streams unavailable (replica set required)",
         });
-      } finally {
         request.signal.removeEventListener("abort", onAbort);
-        cleanup();
         try {
           controller.close();
         } catch {
-          /* closed from abort */
+          /* */
         }
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+
+        changeStream!.on("change", () => {
+          if (request.signal.aborted) return;
+          safeSend({ type: "workspace_changed" });
+        });
+
+        changeStream!.once("close", finish);
+
+        changeStream!.once("error", (err: unknown) => {
+          if (!request.signal.aborted) {
+            console.warn("[workspace/events] change stream error", err);
+            safeSend({
+              type: "error",
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
+          finish();
+        });
+      });
+
+      request.signal.removeEventListener("abort", onAbort);
+      void changeStream?.close().catch(() => {});
+      changeStream = undefined;
+      try {
+        controller.close();
+      } catch {
+        /* already closed */
       }
     },
   });
