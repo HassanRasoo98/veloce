@@ -109,6 +109,21 @@ export function briefCreateResponse(
   };
 }
 
+/** Replay payload for idempotent intake/webhook retries (analysisError not stored; omitted on replay). */
+export async function loadBriefCreateResponse(
+  db: Db,
+  briefId: ObjectId,
+): Promise<ReturnType<typeof briefCreateResponse> | null> {
+  const brief = await db
+    .collection<BriefDoc>(COLLECTIONS.briefs)
+    .findOne({ _id: briefId });
+  if (!brief) return null;
+  const analysis = await db
+    .collection<AiAnalysisDoc>(COLLECTIONS.aiAnalyses)
+    .findOne({ brief_id: briefId });
+  return briefCreateResponse(brief, analysis ?? null, null);
+}
+
 export async function ensureCanView(
   db: Db,
   user: { role: string; _id: ObjectId },

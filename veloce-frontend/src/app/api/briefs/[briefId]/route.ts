@@ -57,31 +57,29 @@ export async function GET(
     return jsonDetail("Forbidden", 403);
   }
 
-  const analysis = await db
-    .collection<AiAnalysisDoc>(COLLECTIONS.aiAnalyses)
-    .findOne({ brief_id: oid });
-
-  const events = await db
-    .collection<StageEventDoc>(COLLECTIONS.stageEvents)
-    .find({ brief_id: oid })
-    .sort({ at: -1 })
-    .toArray();
-
-  const notes = await db
-    .collection<NoteDoc>(COLLECTIONS.notes)
-    .find({ brief_id: oid })
-    .sort({ at: -1 })
-    .toArray();
-
-  const assigns = await db
-    .collection<AssignmentDoc>(COLLECTIONS.assignments)
-    .find({ brief_id: oid })
-    .sort({ at: -1 })
-    .toArray();
-
-  const override = await db
-    .collection<EstimateOverrideDoc>(COLLECTIONS.estimateOverrides)
-    .findOne({ brief_id: oid });
+  const [analysis, events, notes, assigns, override] = await Promise.all([
+    db
+      .collection<AiAnalysisDoc>(COLLECTIONS.aiAnalyses)
+      .findOne({ brief_id: oid }),
+    db
+      .collection<StageEventDoc>(COLLECTIONS.stageEvents)
+      .find({ brief_id: oid })
+      .sort({ at: -1 })
+      .toArray(),
+    db
+      .collection<NoteDoc>(COLLECTIONS.notes)
+      .find({ brief_id: oid })
+      .sort({ at: -1 })
+      .toArray(),
+    db
+      .collection<AssignmentDoc>(COLLECTIONS.assignments)
+      .find({ brief_id: oid })
+      .sort({ at: -1 })
+      .toArray(),
+    db
+      .collection<EstimateOverrideDoc>(COLLECTIONS.estimateOverrides)
+      .findOne({ brief_id: oid }),
+  ]);
 
   return Response.json({
     brief: briefToOut(brief),

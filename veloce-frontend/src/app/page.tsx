@@ -10,9 +10,9 @@ export default function HomePage() {
         AI-powered project intake and estimation
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-        This UI mirrors the CodeAcme full-stack assessment: a public brief form, an
-        internal pipeline with Kanban and analytics, and mock roles. There is no
-        backend—state lives in memory in the browser.
+        Public intake, AI-assisted brief analysis (OpenAI), and an internal dashboard
+        with Kanban, analytics, and role-based access—backed by MongoDB Atlas and Next.js
+        API routes. Sign in to explore the pipeline; submit a brief without an account.
       </p>
       <div className="mt-10 flex flex-wrap gap-4">
         <Link

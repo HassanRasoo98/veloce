@@ -7,7 +7,8 @@ export default function AnalyticsPage() {
         Analytics
       </h1>
       <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        Aggregates from in-memory mock data (all briefs in the session).
+        Server-computed from MongoDB for briefs you can access. Responses are cached in
+        Upstash Redis (see README) and refresh when the workspace syncs after changes.
       </p>
       <div className="mt-8">
         <AnalyticsClient />

@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 
 import { jsonDetail } from "@/lib/server/api-response";
+import { bumpAnalyticsCacheGeneration } from "@/lib/server/analytics-cache";
 import type { BriefDoc, NoteDoc } from "@/lib/server/brief-docs";
 import { ensureCanView } from "@/lib/server/brief-pipeline";
 import { COLLECTIONS } from "@/lib/server/collections";
@@ -89,5 +90,6 @@ export async function POST(
     return jsonDetail("Failed to create note", 500);
   }
 
+  void bumpAnalyticsCacheGeneration();
   return Response.json(noteToOut(n));
 }

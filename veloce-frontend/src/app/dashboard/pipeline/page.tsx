@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { PipelineBoard } from "@/components/pipeline-board";
+import { PipelineSkeleton } from "@/components/pipeline-skeleton";
 import { PipelineWelcome } from "@/components/pipeline-welcome";
 
 export default function PipelinePage() {
@@ -12,7 +13,7 @@ export default function PipelinePage() {
         Drag briefs between stages. Reviewer role only sees assigned briefs.
       </p>
       <div className="mt-8">
-        <Suspense fallback={null}>
+        <Suspense fallback={<PipelineSkeleton />}>
           <PipelineWelcome />
         </Suspense>
         <PipelineBoard />

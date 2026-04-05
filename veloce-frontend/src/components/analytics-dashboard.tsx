@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -12,81 +12,85 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { AnalyticsSummary } from "@/lib/api";
+import { fetchAnalyticsSummary } from "@/lib/api";
 import { useVeloce } from "@/lib/veloce-store";
-import {
-  PIPELINE_STAGES,
-  budgetTierMidUsd,
-  stageLabel,
-  type PipelineStage,
-} from "@/types/veloce";
 
-const ACTIVE_STAGES: PipelineStage[] = [
-  "new",
-  "under_review",
-  "proposal_sent",
-];
-
-function monthKey(iso: string) {
-  const d = new Date(iso);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+function AnalyticsSkeleton() {
+  return (
+    <div className="animate-pulse space-y-8" aria-hidden>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="h-28 rounded-xl bg-zinc-200 dark:bg-zinc-800"
+          />
+        ))}
+      </div>
+      <div className="grid gap-8 lg:grid-cols-2">
+        <div className="h-80 rounded-xl bg-zinc-200 dark:bg-zinc-800" />
+        <div className="h-80 rounded-xl bg-zinc-200 dark:bg-zinc-800" />
+      </div>
+    </div>
+  );
 }
 
 export function AnalyticsDashboard() {
-  const { briefs, analyses } = useVeloce();
+  const { workspaceVersion, userId } = useVeloce();
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const byStage = useMemo(() => {
-    return PIPELINE_STAGES.map((stage) => ({
-      stage: stageLabel(stage),
-      count: briefs.filter((b) => b.stage === stage).length,
-    }));
-  }, [briefs]);
-
-  const conversion = useMemo(() => {
-    const total = briefs.length;
-    const won = briefs.filter((b) => b.stage === "won").length;
-    return {
-      rate: total ? Math.round((won / total) * 1000) / 10 : 0,
-      won,
-      total,
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const s = await fetchAnalyticsSummary();
+        if (!cancelled) {
+          setError(null);
+          setSummary(s);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setSummary(null);
+          setError(
+            e instanceof Error ? e.message : "Failed to load analytics",
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
-  }, [briefs]);
+  }, [workspaceVersion, userId]);
 
-  const pipelineRevenue = useMemo(() => {
-    return briefs
-      .filter((b) => ACTIVE_STAGES.includes(b.stage))
-      .reduce((sum, b) => sum + budgetTierMidUsd(b.budgetTier), 0);
-  }, [briefs]);
+  if (!userId) {
+    return (
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        Sign in to view analytics.
+      </p>
+    );
+  }
 
-  const complexityOverTime = useMemo(() => {
-    const map = new Map<string, { sum: number; n: number }>();
-    for (const b of briefs) {
-      const a = analyses.get(b.id);
-      if (!a) continue;
-      const key = monthKey(b.submittedAt);
-      const cur = map.get(key) ?? { sum: 0, n: 0 };
-      cur.sum += a.complexity;
-      cur.n += 1;
-      map.set(key, cur);
-    }
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, { sum, n }]) => ({
-        month,
-        avgComplexity: Math.round((sum / n) * 10) / 10,
-      }));
-  }, [briefs, analyses]);
+  if (error) {
+    return (
+      <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+        {error}
+      </p>
+    );
+  }
 
-  const topCategories = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const b of briefs) {
-      const a = analyses.get(b.id);
-      if (!a) continue;
-      counts.set(a.category, (counts.get(a.category) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, value]) => ({ name, value }));
-  }, [briefs, analyses]);
+  if (!summary) {
+    return <AnalyticsSkeleton />;
+  }
+
+  const {
+    byStage,
+    conversion,
+    pipelineRevenue,
+    complexityOverTime,
+    topCategories,
+  } = summary;
 
   return (
     <div className="space-y-8">

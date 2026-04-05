@@ -89,10 +89,6 @@ export function AuthBar() {
           {error}
         </p>
       ) : null}
-      <p className="w-full text-xs text-zinc-500">
-        Default after seed: admin@veloce.local / admin123 or reviewer@veloce.local /
-        reviewer123
-      </p>
     </form>
   );
 }

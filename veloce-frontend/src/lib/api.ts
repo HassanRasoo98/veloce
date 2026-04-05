@@ -50,6 +50,14 @@ export type BriefListPage = {
   nextCursor: string | null;
 };
 
+export type AnalyticsSummary = {
+  byStage: { stage: string; count: number }[];
+  conversion: { rate: number; won: number; total: number };
+  pipelineRevenue: number;
+  complexityOverTime: { month: string; avgComplexity: number }[];
+  topCategories: { name: string; value: number }[];
+};
+
 async function parseError(res: Response): Promise<string> {
   try {
     const j = (await res.json()) as { detail?: string | unknown };
@@ -109,17 +117,27 @@ export async function listBriefsPage(
   return apiFetch(`/api/briefs?${q}`);
 }
 
+export async function fetchAnalyticsSummary(): Promise<AnalyticsSummary> {
+  return apiFetch("/api/analytics/summary");
+}
+
 export async function getBriefDetail(id: string): Promise<BriefDetailApi> {
   return apiFetch(`/api/briefs/${id}`);
 }
 
 export async function createBriefPublic(
   body: IntakeFormValues,
+  idempotencyKey?: string,
 ): Promise<{ brief: Brief; analysis: AiAnalysis | null; analysisError: string | null }> {
+  const headers = new Headers();
+  if (idempotencyKey) {
+    headers.set("Idempotency-Key", idempotencyKey);
+  }
   return apiFetch("/api/briefs", {
     method: "POST",
     body: JSON.stringify(body),
     skipAuth: true,
+    headers,
   });
 }
 

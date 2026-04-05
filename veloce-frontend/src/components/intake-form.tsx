@@ -45,7 +45,11 @@ export function IntakeForm() {
     }
     setSubmitting(true);
     try {
-      await addIntakeBrief(parsed.data);
+      const idempotencyKey =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : undefined;
+      await addIntakeBrief(parsed.data, idempotencyKey);
       setValues(defaultValues);
       router.push("/dashboard/pipeline?welcome=1");
     } catch (err) {

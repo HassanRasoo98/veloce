@@ -7,4 +7,5 @@ export const COLLECTIONS = {
   notes: "notes",
   assignments: "assignments",
   estimateOverrides: "estimateoverrides",
+  idempotencyKeys: "idempotencykeys",
 } as const;

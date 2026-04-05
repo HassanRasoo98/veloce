@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 
 import { jsonDetail } from "@/lib/server/api-response";
+import { bumpAnalyticsCacheGeneration } from "@/lib/server/analytics-cache";
 import type { BriefDoc, EstimateOverrideDoc } from "@/lib/server/brief-docs";
 import { ensureCanView } from "@/lib/server/brief-pipeline";
 import { COLLECTIONS } from "@/lib/server/collections";
@@ -94,5 +95,6 @@ export async function POST(
   const o = await db
     .collection<EstimateOverrideDoc>(COLLECTIONS.estimateOverrides)
     .findOne({ _id: ins.insertedId });
+  void bumpAnalyticsCacheGeneration();
   return Response.json(overrideToOut(o!));
 }

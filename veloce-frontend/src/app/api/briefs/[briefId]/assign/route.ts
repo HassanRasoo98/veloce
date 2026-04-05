@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 
 import { jsonDetail } from "@/lib/server/api-response";
+import { bumpAnalyticsCacheGeneration } from "@/lib/server/analytics-cache";
 import type { AssignmentDoc, BriefDoc } from "@/lib/server/brief-docs";
 import { COLLECTIONS } from "@/lib/server/collections";
 import { getEnv } from "@/lib/server/env";
@@ -82,5 +83,6 @@ export async function POST(
   const a = await db
     .collection<AssignmentDoc>(COLLECTIONS.assignments)
     .findOne({ _id: ins.insertedId });
+  void bumpAnalyticsCacheGeneration();
   return Response.json(assignmentToOut(a!));
 }

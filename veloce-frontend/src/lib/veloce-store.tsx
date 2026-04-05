@@ -111,9 +111,14 @@ type VeloceContextValue = {
   currentUserName: string;
   userId: string;
   syncing: boolean;
+  /** Increments after each successful workspace sync (initial load, SSE, visibility). */
+  workspaceVersion: number;
   defaultReviewerId: string | null;
   refreshWorkspace: () => Promise<void>;
-  addIntakeBrief: (values: IntakeFormValues) => Promise<void>;
+  addIntakeBrief: (
+    values: IntakeFormValues,
+    idempotencyKey?: string,
+  ) => Promise<void>;
   moveBriefToStage: (briefId: string, toStage: PipelineStage) => Promise<void>;
   addNote: (input: {
     briefId: string;
@@ -145,6 +150,7 @@ const guestValue: VeloceContextValue = {
   currentUserName: "",
   userId: "",
   syncing: false,
+  workspaceVersion: 0,
   defaultReviewerId: null,
   refreshWorkspace: async () => {},
   addIntakeBrief: async () => {},
@@ -161,6 +167,7 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
   const [state, dispatch] = useReducer(reducer, emptyState);
   const [syncing, setSyncing] = useState(false);
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
   const [defaultReviewerId, setDefaultReviewerId] = useState<string | null>(
     null,
   );
@@ -217,6 +224,7 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
         assignments,
         estimateOverrides,
       });
+      setWorkspaceVersion((v) => v + 1);
     } finally {
       setSyncing(false);
     }
@@ -294,7 +302,7 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [authLoading, user?.id, refreshWorkspace]);
+  }, [authLoading, user, refreshWorkspace]);
 
   useEffect(() => {
     if (user?.role === "admin") {
@@ -323,8 +331,8 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
   }, [state.briefs, user, isReviewerAssignedTo]);
 
   const addIntakeBrief = useCallback(
-    async (values: IntakeFormValues) => {
-      await createBriefPublic(values);
+    async (values: IntakeFormValues, idempotencyKey?: string) => {
+      await createBriefPublic(values, idempotencyKey);
       if (user) await refreshWorkspace();
     },
     [user, refreshWorkspace],
@@ -406,6 +414,7 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
     if (!user) {
       return {
         ...guestValue,
+        workspaceVersion,
         addIntakeBrief,
         refreshWorkspace,
       };
@@ -421,6 +430,7 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
       currentUserName: user.name,
       userId: user.id,
       syncing,
+      workspaceVersion,
       defaultReviewerId,
       refreshWorkspace,
       addIntakeBrief,
@@ -436,6 +446,7 @@ export function VeloceProvider({ children }: { children: ReactNode }) {
     user,
     state,
     syncing,
+    workspaceVersion,
     defaultReviewerId,
     refreshWorkspace,
     addIntakeBrief,

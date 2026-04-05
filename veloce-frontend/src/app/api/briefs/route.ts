@@ -1,17 +1,27 @@
 import type { ObjectId } from "mongodb";
 
 import { jsonDetail } from "@/lib/server/api-response";
+import { bumpAnalyticsCacheGeneration } from "@/lib/server/analytics-cache";
 import type { BriefDoc } from "@/lib/server/brief-docs";
 import {
   briefCreateResponse,
   createBriefFromIntake,
+  loadBriefCreateResponse,
   reviewerBriefIds,
 } from "@/lib/server/brief-pipeline";
 import { COLLECTIONS } from "@/lib/server/collections";
 import { decodeCursor, encodeCursor } from "@/lib/server/cursor";
 import { getEnv } from "@/lib/server/env";
+import {
+  finalizeIdempotencyKey,
+  fullIdempotencyKey,
+  normalizeIdempotencyHeader,
+  releaseIdempotencyReservation,
+  startIdempotentBriefCreate,
+} from "@/lib/server/idempotency";
 import { getDb } from "@/lib/server/mongo";
 import { getCurrentUser } from "@/lib/server/request-user";
+import { rateLimitPublicWrite } from "@/lib/server/rate-limit";
 import { intakeCreateSchema } from "@/lib/server/schemas";
 import { briefToOut } from "@/lib/server/serialize";
 
@@ -20,6 +30,9 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   getEnv();
+  const limited = await rateLimitPublicWrite(request, "intake");
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -33,13 +46,46 @@ export async function POST(request: Request) {
   }
 
   const db = await getDb();
-  const { brief, analysis, analysisError } = await createBriefFromIntake(
-    db,
-    parsed.data,
-    "Public intake",
-  );
+  const rawIdem = normalizeIdempotencyHeader(request);
+  let idemKey: string | null = null;
 
-  return Response.json(briefCreateResponse(brief, analysis, analysisError));
+  if (rawIdem) {
+    idemKey = fullIdempotencyKey("intake", rawIdem);
+    const start = await startIdempotentBriefCreate(db, idemKey);
+    if (start.kind === "replay") {
+      const replayed = await loadBriefCreateResponse(db, start.briefId);
+      if (!replayed) {
+        return jsonDetail("Not found", 404);
+      }
+      return Response.json(replayed);
+    }
+    if (start.kind === "in_flight") {
+      return jsonDetail(
+        "A request with this idempotency key is already in progress",
+        409,
+      );
+    }
+  }
+
+  try {
+    const { brief, analysis, analysisError } = await createBriefFromIntake(
+      db,
+      parsed.data,
+      "Public intake",
+    );
+
+    if (idemKey) {
+      await finalizeIdempotencyKey(db, idemKey, brief._id);
+    }
+
+    void bumpAnalyticsCacheGeneration();
+    return Response.json(briefCreateResponse(brief, analysis, analysisError));
+  } catch (e) {
+    if (idemKey) {
+      await releaseIdempotencyReservation(db, idemKey);
+    }
+    throw e;
+  }
 }
 
 export async function GET(request: Request) {
