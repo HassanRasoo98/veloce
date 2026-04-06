@@ -9,6 +9,11 @@
  *   npm run test-webhook -- --payload scripts/fixtures/webhook-intake-payload.json
  *   npm run test-webhook -- --invalid-signature   # expect 401
  *   npm run test-webhook -- --dry-run             # print signature only
+ *
+ * Vercel **Deployment Protection** on preview URLs returns HTML "Authentication Required"
+ * (401) before your route runs—that is not webhook HMAC failure. Options: disable protection
+ * for that environment, use your production domain, set WEBHOOK_TEST_VERCEL_BYPASS_TOKEN
+ * (Project → Settings → Deployment Protection), or pass --vercel-bypass <token>.
  */
 import { createHmac } from "crypto";
 import { config } from "dotenv";
@@ -35,11 +40,17 @@ function parseArgs() {
   let payloadPath: string | null = null;
   let invalidSig = false;
   let dryRun = false;
+  let vercelBypass =
+    process.env.WEBHOOK_TEST_VERCEL_BYPASS_TOKEN?.trim() || undefined;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--url" && args[i + 1]) {
       baseUrl = args[++i]!;
+      continue;
+    }
+    if (a === "--vercel-bypass" && args[i + 1]) {
+      vercelBypass = args[++i]!.trim() || undefined;
       continue;
     }
     if (a === "--payload" && args[i + 1]) {
@@ -59,6 +70,7 @@ function parseArgs() {
 
 Options:
   --url <base>              Origin only, default WEBHOOK_TEST_BASE_URL or http://localhost:3000
+  --vercel-bypass <token>   Append Vercel deployment-protection bypass query params (or set WEBHOOK_TEST_VERCEL_BYPASS_TOKEN)
   --payload <file.json>     Raw body bytes (must match intakeCreateSchema)
   --invalid-signature       Send wrong HMAC; expect 401
   --dry-run                 Print sha256=... and exit (no HTTP)
@@ -67,7 +79,15 @@ Options:
     }
   }
 
-  return { baseUrl, payloadPath, invalidSig, dryRun };
+  return { baseUrl, payloadPath, invalidSig, dryRun, vercelBypass };
+}
+
+function withVercelProtectionBypass(href: string, token: string | undefined): string {
+  if (!token) return href;
+  const u = new URL(href);
+  u.searchParams.set("x-vercel-set-bypass-cookie", "true");
+  u.searchParams.set("x-vercel-protection-bypass", token);
+  return u.href;
 }
 
 function signBody(secret: string, raw: Buffer): string {
@@ -82,7 +102,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { baseUrl, payloadPath, invalidSig, dryRun } = parseArgs();
+  const { baseUrl, payloadPath, invalidSig, dryRun, vercelBypass } = parseArgs();
 
   const raw = payloadPath
     ? readFileSync(resolve(process.cwd(), payloadPath))
@@ -90,10 +110,10 @@ async function main() {
 
   const sig = invalidSig ? "sha256=deadbeef00000000" : signBody(secret, raw);
 
-  const endpoint = new URL(
-    "/api/webhooks/intake",
-    baseUrl.replace(/\/$/, "") + "/",
-  ).href;
+  const endpoint = withVercelProtectionBypass(
+    new URL("/api/webhooks/intake", baseUrl.replace(/\/$/, "") + "/").href,
+    vercelBypass,
+  );
 
   if (dryRun) {
     console.log("Body bytes:", raw.length);
@@ -128,6 +148,20 @@ async function main() {
     console.log(JSON.stringify(JSON.parse(text), null, 2));
   } catch {
     console.log(text.slice(0, 2000));
+  }
+
+  const looksLikeVercelShell =
+    res.status === 401 &&
+    /Authentication Required|x-vercel-protection-bypass|vercel\.com\/docs\/deployment-protection/i.test(
+      text,
+    );
+  if (looksLikeVercelShell && !invalidSig) {
+    console.error(`
+This response is Vercel **Deployment Protection**, not your app's webhook HMAC check.
+Fix: turn off protection for Preview/Production (Project → Settings → Deployment Protection),
+use an unprotected production URL, or set WEBHOOK_TEST_VERCEL_BYPASS_TOKEN / --vercel-bypass.
+Docs: https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection
+`);
   }
 
   if (invalidSig) {

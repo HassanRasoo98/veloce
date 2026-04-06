@@ -2,6 +2,8 @@
 
 Next.js App Router app: public intake, dashboard pipeline (Kanban), brief detail, analytics, and **API routes** (auth, briefs, users, webhooks) for deployment on **Vercel** with **MongoDB Atlas**, **OpenAI**, and optional **Upstash Redis**.
 
+**Submission:** [Live deployment](https://veloce-rjbr8bqkp-hassan-rasools-projects.vercel.app) · [GitHub repository](https://github.com/HassanRasoo98/veloce)
+
 ## Environment
 
 Copy [.env.local.example](.env.local.example) to `.env.local` and fill in values. Server routes need `MONGODB_URI`, `OPENAI_API_KEY`, `JWT_SECRET`, and `WEBHOOK_HMAC_SECRET` at minimum.
@@ -91,9 +93,30 @@ Exceeded limits return **429** with `{ "detail": "..." }`.
 
 The public intake form sends a per-submit UUID when the Web Crypto API is available.
 
+## AI pipeline design
+
+1. **Intake** — Public `POST /api/briefs` and signed `POST /api/webhooks/intake` validate payloads (Zod), then call `createBriefFromIntake` in `src/lib/server/brief-pipeline.ts`.
+2. **Persist first** — A `briefs` document is inserted so the user always gets a record even if analysis fails downstream.
+3. **Analysis** — `runBriefAnalysis` calls OpenAI with a fixed prompt and **structured output** parsed against a Zod schema (`src/lib/server/openai-analyze.ts`). Retries and backoff cover rate limits and transient 503s.
+4. **Persist analysis** — On success, an `aianalyses` document is written and linked by `brief_id`; on failure, the brief remains and `analysisError` is surfaced to the client (and logged server-side).
+
 ## AI integration
 
 OpenAI structured output uses Zod via `responses.parse`, with retries and backoff for rate limits and 503s (`src/lib/server/openai-analyze.ts`). Briefs persist even when analysis fails; `analysisError` is returned to the client.
+
+## AI tools used during development
+
+- **Tools used:** [Cursor](https://cursor.com) only—no other AI coding assistants or chat tools for implementation.
+- **How the app was built:** The project was developed from scratch in Cursor. I started from the [CodeAcme assessment](https://assessment.codeacme.com/) brief and first generated a **UI mockup** to align the product surface with the requirements. I then implemented the **backend** (Next.js Route Handlers, MongoDB persistence, auth), added **MongoDB indexing** (`scripts/create-indexes.ts`), wired **Upstash Redis** for rate limiting and analytics caching, and implemented **OpenAI structured outputs** (Zod + `responses.parse`, retries) for brief analysis.
+- **How I verified:** Local `npm run dev` / `npm run build`, manual exercise of intake, dashboard, webhooks, and auth flows; fixes and refactors applied wherever generated code did not match behavior, security, or data integrity needs.
+
+## What we would improve given more time
+
+- **User and org growth** — Today access is centered on **seeded accounts** (one admin and one reviewer). With more time I would add **multi-user** support in the product sense: self-service or invite-based onboarding, many staff accounts, optional organizations/teams, and admin UX to manage users without redeploying seeds.
+- **Automated tests** — API route integration tests (intake, authz, idempotency) and fixture-based checks around OpenAI parsing.
+- **Observability** — Structured logging, request correlation, and clearer production diagnostics for webhooks and failed analyses.
+- **Operational hardening** — Queue-backed analysis so intake stays responsive under load; dead-letter or retry policies for failed analysis jobs.
+- **Product polish** — Notifications on stage changes, richer analytics exports, and additional workflow features as priorities emerge.
 
 ## Run locally
 
@@ -106,11 +129,9 @@ Open [http://localhost:3000](http://localhost:3000). **Dashboard** requires sign
 
 Health check: `GET /api/health` (also `GET /health` via rewrite in [vercel.json](vercel.json)).
 
-## Assessment and evaluation notes
+## Assessment context
 
-See [EVALUATION.md](EVALUATION.md) for a rubric-to-code map and AI-tool disclosure template.
-
-Product scope aligns with the [CodeAcme assessment](https://assessment.codeacme.com/).
+Product scope aligns with the [CodeAcme assessment](https://assessment.codeacme.com/). AI-tool disclosure for this submission is documented above under **AI tools used during development**.
 
 ## Git hygiene (submissions)
 
