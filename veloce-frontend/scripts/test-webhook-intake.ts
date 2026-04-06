@@ -14,6 +14,10 @@
  * (401) before your route runs—that is not webhook HMAC failure. Options: disable protection
  * for that environment, use your production domain, set WEBHOOK_TEST_VERCEL_BYPASS_TOKEN
  * (Project → Settings → Deployment Protection), or pass --vercel-bypass <token>.
+ *
+ * The bypass is sent as the **x-vercel-protection-bypass** header (Vercel’s recommended
+ * approach). Do not use x-vercel-set-bypass-cookie with Node fetch + POST — it triggers a
+ * redirect that can crash undici (“detached ArrayBuffer”).
  */
 import { createHmac } from "crypto";
 import { config } from "dotenv";
@@ -70,7 +74,7 @@ function parseArgs() {
 
 Options:
   --url <base>              Origin only, default WEBHOOK_TEST_BASE_URL or http://localhost:3000
-  --vercel-bypass <token>   Append Vercel deployment-protection bypass query params (or set WEBHOOK_TEST_VERCEL_BYPASS_TOKEN)
+  --vercel-bypass <token>   Send x-vercel-protection-bypass header (or set WEBHOOK_TEST_VERCEL_BYPASS_TOKEN)
   --payload <file.json>     Raw body bytes (must match intakeCreateSchema)
   --invalid-signature       Send wrong HMAC; expect 401
   --dry-run                 Print sha256=... and exit (no HTTP)
@@ -80,14 +84,6 @@ Options:
   }
 
   return { baseUrl, payloadPath, invalidSig, dryRun, vercelBypass };
-}
-
-function withVercelProtectionBypass(href: string, token: string | undefined): string {
-  if (!token) return href;
-  const u = new URL(href);
-  u.searchParams.set("x-vercel-set-bypass-cookie", "true");
-  u.searchParams.set("x-vercel-protection-bypass", token);
-  return u.href;
 }
 
 function signBody(secret: string, raw: Buffer): string {
@@ -110,17 +106,20 @@ async function main() {
 
   const sig = invalidSig ? "sha256=deadbeef00000000" : signBody(secret, raw);
 
-  const endpoint = withVercelProtectionBypass(
-    new URL("/api/webhooks/intake", baseUrl.replace(/\/$/, "") + "/").href,
-    vercelBypass,
-  );
+  const endpoint = new URL(
+    "/api/webhooks/intake",
+    baseUrl.replace(/\/$/, "") + "/",
+  ).href;
 
   if (dryRun) {
     console.log("Body bytes:", raw.length);
     console.log("X-Signature:", sig);
     console.log("\nExample:\n");
+    const bypassLine = vercelBypass
+      ? "  -H 'x-vercel-protection-bypass: $WEBHOOK_TEST_VERCEL_BYPASS_TOKEN' \\\n"
+      : "";
     console.log(
-      `curl -sS -X POST '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-Signature: ${sig}' \\\n  --data-binary @${payloadPath ?? "(inline — use saved file for curl)"}`,
+      `curl -sS -X POST '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n${bypassLine}  -H 'X-Signature: ${sig}' \\\n  --data-binary @${payloadPath ?? "(inline — use saved file for curl)"}`,
     );
     if (!payloadPath) {
       console.log(
@@ -130,7 +129,7 @@ async function main() {
     return;
   }
 
-  console.log(`POST ${endpoint}`);
+  console.log(`POST ${endpoint}${vercelBypass ? " (+ x-vercel-protection-bypass header)" : ""}`);
   console.log(`Body: ${raw.length} bytes${payloadPath ? ` (${payloadPath})` : " (built-in default)"}`);
 
   const res = await fetch(endpoint, {
@@ -138,6 +137,9 @@ async function main() {
     headers: {
       "Content-Type": "application/json",
       "X-Signature": sig,
+      ...(vercelBypass
+        ? { "x-vercel-protection-bypass": vercelBypass }
+        : {}),
     },
     body: raw,
   });
